@@ -1,8 +1,7 @@
 import asyncio
 import os
 
-# 假設你把伺服器類別存在 tcp_sender.py 中
-from tcp_sender import Esp32TcpServer
+from lps_ctrl import Esp32TcpServer
 
 async def main():
     # 1. 設定總共有幾個 Player
