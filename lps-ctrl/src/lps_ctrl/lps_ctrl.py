@@ -97,16 +97,25 @@ class ESP32BTSender:
                     "cmd_id": int(parts[1]),
                     "cmd_type": int(parts[2]),
                     "target_delay": int(parts[3]),
-                    "state": state
+                    "state": state,
+                    "timestamp": time.time()
                 }
                 # Prevent duplicate entries in the buffer
-                if packet not in self.found_devices_buffer:
+                is_duplicate = False
+                for existing_packet in self.found_devices_buffer:
+                    if (existing_packet["target_id"] == packet["target_id"] and 
+                        abs(packet["timestamp"] - existing_packet["timestamp"]) < 0.01):
+                        is_duplicate = True
+                        break
+                
+                if not is_duplicate:
                     self.found_devices_buffer.append(packet)
         except Exception as e:
             logger.error(f"Parse error: {e}")
 
     def send_burst(self, cmd_input, delay_sec, prep_led_sec, target_ids, data):
         """Sends a scheduled broadcast command to the ESP32 Sender."""
+        self._drain_serial()
         error_response = self._format_response(-1, cmd_input, target_ids, -1, "Port not open")
         if not self.ser or not self.ser.is_open:
             return error_response
@@ -157,7 +166,7 @@ class ESP32BTSender:
             
         resp = self.send_burst(
                 cmd_input='CHECK', 
-                delay_sec=0.6, 
+                delay_sec=1.0, 
                 prep_led_sec=0, 
                 target_ids=target_ids, 
                 data=[0, 0, 0]
@@ -165,7 +174,6 @@ class ESP32BTSender:
         if resp['statusCode'] != 0:
             return resp
             
-        self.found_devices_buffer = [] # Clear buffer before scanning
         cmd_id = resp['payload']['command_id']
         return {
             "from": "Host_PC",
@@ -182,17 +190,19 @@ class ESP32BTSender:
     def get_latest_report(self):
         """Fetches the aggregated status report after a CHECK scan."""
         self._drain_serial() # Ensure all pending data is read
-        
+        report_snapshot = list(self.found_devices_buffer)
+        self.found_devices_buffer = []
         return {
             "from": "Host_PC",
             "topic": "check_report",
             "statusCode": 0,
             "payload": {
                 "scan_duration_sec": 2,
-                "found_count": len(self.found_devices_buffer),
-                "found_devices": self.found_devices_buffer
+                "found_count": len(report_snapshot),
+                "found_devices": report_snapshot
             }
         }
+    
 
     def _drain_serial(self):
         """Reads and parses any lingering data in the serial buffer."""
