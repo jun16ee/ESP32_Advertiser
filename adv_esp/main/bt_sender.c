@@ -56,45 +56,49 @@ static int s_rr_index = 0;                      // Round-Robin Index to ensure f
  * Helper functions to format and send low-level HCI commands
  * ======================================================== */
 
-// Pack and send BLE advertising data (Manufacturer Specific Data)
-static void hci_cmd_send_ble_set_adv_data(uint8_t cmd_type, uint32_t delay_us, uint32_t prep_led_us, uint64_t target_mask,const uint8_t *data) {
+// Pack and send BLE advertising data
+static void hci_cmd_send_ble_set_adv_data(uint8_t cmd_type, uint32_t delay_ms, uint32_t prep_led_ms, uint64_t target_mask, const uint8_t *data) {
     uint8_t raw_adv_data[31];
     uint8_t idx = 0;
     
-    // Flags (Standard BLE Discovery Flags)
     raw_adv_data[idx++] = 2; raw_adv_data[idx++] = 0x01; raw_adv_data[idx++] = 0x06;
     
-    // Manufacturer Specific Data
-    raw_adv_data[idx++] = 23; // len
-    raw_adv_data[idx++] = 0xFF; raw_adv_data[idx++] = 0xFF; raw_adv_data[idx++] = 0xFF; // Company ID
+    int len_idx = idx++;
+    raw_adv_data[idx++] = 0xFF;
+    
+    // ('L' = 0x4C, 'D' = 0x44)
+    raw_adv_data[idx++] = 0x4C; 
+    raw_adv_data[idx++] = 0x44;
+    
+    // Slot ID + Cmd
     raw_adv_data[idx++] = cmd_type;
 
-    // Bitmask for player ID (8 bytes)
-    raw_adv_data[idx++] = (uint8_t)(target_mask & 0xFF);         // IDs 0-7
-    raw_adv_data[idx++] = (uint8_t)((target_mask >> 8) & 0xFF);  // IDs 8-15
-    raw_adv_data[idx++] = (uint8_t)((target_mask >> 16) & 0xFF); // IDs 16-23
-    raw_adv_data[idx++] = (uint8_t)((target_mask >> 24) & 0xFF); // IDs 24-31
-    raw_adv_data[idx++] = (uint8_t)((target_mask >> 32) & 0xFF); // IDs 32-39
-    raw_adv_data[idx++] = (uint8_t)((target_mask >> 40) & 0xFF); // IDs 40-47
-    raw_adv_data[idx++] = (uint8_t)((target_mask >> 48) & 0xFF); // IDs 48-55
-    raw_adv_data[idx++] = (uint8_t)((target_mask >> 56) & 0xFF); // IDs 56-63
+    // Target Mask (8 bytes)
+    for(int i = 0; i < 8; i++) {
+        raw_adv_data[idx++] = (uint8_t)((target_mask >> (i * 8)) & 0xFF);
+    }
 
-    // Delay info (4 bytes)
-    raw_adv_data[idx++] = (delay_us >> 24) & 0xFF;
-    raw_adv_data[idx++] = (delay_us >> 16) & 0xFF;
-    raw_adv_data[idx++] = (delay_us >> 8)  & 0xFF;
-    raw_adv_data[idx++] = (delay_us)       & 0xFF;
+    // Delay MS (4 bytes)
+    raw_adv_data[idx++] = (delay_ms >> 24) & 0xFF;
+    raw_adv_data[idx++] = (delay_ms >> 16) & 0xFF;
+    raw_adv_data[idx++] = (delay_ms >> 8)  & 0xFF;
+    raw_adv_data[idx++] = (delay_ms)       & 0xFF;
 
-    // Prep LED info (4 bytes)
-    raw_adv_data[idx++] = (prep_led_us >> 24) & 0xFF;
-    raw_adv_data[idx++] = (prep_led_us >> 16) & 0xFF;
-    raw_adv_data[idx++] = (prep_led_us >> 8)  & 0xFF;
-    raw_adv_data[idx++] = (prep_led_us)       & 0xFF;
+    uint8_t base_cmd = cmd_type & 0x0F;
+    if (base_cmd == 0x01) {
+        raw_adv_data[idx++] = (prep_led_ms >> 24) & 0xFF;
+        raw_adv_data[idx++] = (prep_led_ms >> 16) & 0xFF;
+        raw_adv_data[idx++] = (prep_led_ms >> 8)  & 0xFF;
+        raw_adv_data[idx++] = (prep_led_ms)       & 0xFF;
+    } else if (base_cmd == 0x05) {
+        raw_adv_data[idx++] = data[0];
+        raw_adv_data[idx++] = data[1];
+        raw_adv_data[idx++] = data[2];
+    } else if (base_cmd == 0x06) {
+        raw_adv_data[idx++] = data[0]; 
+    }
     
-    // Extra Data (RGB)
-    raw_adv_data[idx++] = data[0];
-    raw_adv_data[idx++] = data[1];
-    raw_adv_data[idx++] = data[2];
+    raw_adv_data[len_idx] = (idx - len_idx) - 1;
 
     uint16_t sz = make_cmd_ble_set_adv_data(hci_cmd_buf, idx, raw_adv_data);
     if (esp_vhci_host_check_send_available()) esp_vhci_host_send_packet(hci_cmd_buf, sz);
@@ -145,22 +149,19 @@ static int host_rcv_pkt(uint8_t *data, uint16_t len) {
             uint8_t ad_len = adv_data[offset++];
             if(ad_len == 0) break;
             uint8_t ad_type = adv_data[offset++];
-
-            if(ad_type == 0xFF && ad_len >= 8) { // Manufacturer Data
-                 if(adv_data[offset] == 0xFF && adv_data[offset + 1] == 0xFF) {
-                     // Check Type == 0x07 (ACK Packet from Receiver)
-                     if (adv_data[offset+2] == 0x07) {
-                         uint8_t target_id = adv_data[offset+3];
-                         uint8_t cmd_id    = adv_data[offset+4];
-                         uint8_t cmd_type  = adv_data[offset+5];
-                         uint32_t delay    = (adv_data[offset+6] << 24) | (adv_data[offset+7] << 16) | (adv_data[offset+8] << 8) | adv_data[offset+9];
-                         uint8_t state = adv_data[offset+10];
-                         
-                         // Print formatted result to UART for PC Python script
-                         printf("FOUND:%d,%d,%d,%lu,%d\n", target_id, cmd_id, cmd_type, delay, state);
-                     }
-                 }
+            
+            if(ad_type == 0xFF && (adv_data[offset] == 0x4C && adv_data[offset + 1] == 0x44)) { 
+                if (adv_data[offset+2] == 0x07 && ad_len == 12) {
+                    uint8_t target_id = adv_data[offset+3];
+                    uint8_t cmd_id    = adv_data[offset+4];
+                    uint8_t cmd_type  = adv_data[offset+5];
+                    uint32_t delay_ms = (adv_data[offset+6] << 24) | (adv_data[offset+7] << 16) | (adv_data[offset+8] << 8) | adv_data[offset+9];
+                    uint8_t state = adv_data[offset+10];
+                    
+                    printf("FOUND:%d,%d,%d,%lu,%d\n", target_id, cmd_id, cmd_type, delay_ms, state);
+                }
             }
+            
             offset += (ad_len - 1);
         }
         payload += (10 + data_len + 1);
@@ -236,13 +237,10 @@ static void broadcast_scheduler_task(void *arg) {
         if (task_index_to_run != -1) {
             active_task_t *t = &s_tasks[task_index_to_run];
             
-            // Calculate dynamic remaining time
-            int32_t remain = (int32_t)(t->end_time_us - now_us - TX_OFFSET_US);
-            if (remain < 0) remain = 0;
+            int32_t remain_ms = (int32_t)((t->end_time_us - now_us) / 1000);
+            if (remain_ms < 0) remain_ms = 0;
 
-            // Load data -> Hardware short delay -> Start ADV -> RTOS Delay -> Stop ADV
-            hci_cmd_send_ble_set_adv_data(t->config.cmd_type, remain, t->config.prep_led_us, t->config.target_mask, t->config.data);
-            
+            hci_cmd_send_ble_set_adv_data(t->config.cmd_type, remain_ms, t->config.prep_led_ms, t->config.target_mask, t->config.data);
             // Non-RTOS delay (Busy-wait): Needed to let BT hardware digest the new ADV payload.
             // We MUST use esp_rom_delay_us() here because 500us is smaller than the FreeRTOS minimum tick resolution (typically 1ms).
             // Using vTaskDelay() would force a minimum 1ms yield, introducing jitter and slowing down the strict broadcast rhythm.
@@ -310,7 +308,7 @@ int bt_sender_add_task(const bt_sender_config_t *config) {
     
     if (slot != -1) {
         s_tasks[slot].config = *config;
-        s_tasks[slot].end_time_us = esp_timer_get_time() + config->delay_us;
+        s_tasks[slot].end_time_us = esp_timer_get_time() + ((uint64_t)config->delay_ms * 1000ULL); 
         s_tasks[slot].active = true;
         ESP_LOGD(TAG, "Task added to slot %d (Type 0x%02X)", slot, config->cmd_type);
     } else {

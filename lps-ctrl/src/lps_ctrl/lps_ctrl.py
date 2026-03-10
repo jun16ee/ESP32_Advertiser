@@ -113,22 +113,26 @@ class ESP32BTSender:
         except Exception as e:
             logger.error(f"Parse error: {e}")
 
-    def send_burst(self, cmd_input, delay_sec, prep_led_sec, target_ids, data):
+    def send_burst(self, cmd_input, delay_sec, prep_led_sec=0.0, target_ids=None, data=None):
         """Sends a scheduled broadcast command to the ESP32 Sender."""
         self._drain_serial()
+        
+        if target_ids is None:
+            target_ids = []
+        if data is None:
+            data = [0, 0, 0]
+
         error_response = self._format_response(-1, cmd_input, target_ids, -1, "Port not open")
         if not self.ser or not self.ser.is_open:
             return error_response
 
-        # Convert parameters
         cmd_int = cmd_input if isinstance(cmd_input, int) else self.CMD_MAP.get(cmd_input, 0)
-        delay_us = int(delay_sec * 1_000_000)
-        prep_led_us = int(prep_led_sec * 1_000_000)
+        delay_ms = int(delay_sec * 1000)
+        prep_led_ms = int(prep_led_sec * 1000)
         
-        # Build 64-bit target mask
         target_mask = 0
         if not target_ids or 0 in target_ids:
-            target_mask = 0xFFFFFFFFFFFFFFFF # Broadcast to all
+            target_mask = 0xFFFFFFFFFFFFFFFF 
         else:
             for pid in target_ids:
                 if pid > 0: target_mask |= (1 << pid)
@@ -138,12 +142,11 @@ class ESP32BTSender:
         add_cmd_fail = 1
         packet = ""
         
-        # Find an available slot in the command list
         for i in range(16):
             if self.cmd_list[i] < t_start_pc and i != self.idx:
                 self.cmd_list[i] = target_time
-                cmd_int = i * 16 + cmd_int # Pack slot ID and command ID together
-                packet = f"{cmd_int},{delay_us},{prep_led_us},{target_mask:x},{data[0]},{data[1]},{data[2]}\n"
+                cmd_int = i * 16 + cmd_int 
+                packet = f"{cmd_int},{delay_ms},{prep_led_ms},{target_mask:x},{data[0]},{data[1]},{data[2]}\n"
                 add_cmd_fail = 0
                 self.idx = i
                 break 
@@ -158,19 +161,13 @@ class ESP32BTSender:
         
         status = 0 if success else -1
         return self._format_response(status, cmd_input, target_ids, self.idx, msg)
-
+    
     def trigger_check(self, target_ids=[]):
         """Sends a CHECK command to trigger receivers to broadcast their status."""
         if not self.ser or not self.ser.is_open:
             return self._format_response(-1, "CHECK", target_ids, -1, "Port not open")
             
-        resp = self.send_burst(
-                cmd_input='CHECK', 
-                delay_sec=1.0, 
-                prep_led_sec=0, 
-                target_ids=target_ids, 
-                data=[0, 0, 0]
-            )
+        resp = self.send_burst(cmd_input='CHECK', delay_sec=1.0, target_ids=target_ids)
         if resp['statusCode'] != 0:
             return resp
             

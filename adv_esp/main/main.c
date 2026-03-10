@@ -54,8 +54,8 @@ void process_byte(uint8_t c, int64_t t_wake, int64_t t_read_done) {
             // Build and queue the Bluetooth broadcast task
             bt_sender_config_t burst_cfg = {
                 .cmd_type = (uint8_t)cmd_in,
-                .delay_us = delay_us,
-                .prep_led_us = prep_led_us,
+                .delay_ms = delay_us,
+                .prep_led_ms = prep_led_us,
                 .target_mask = (uint64_t)target_mask,
                 .data[0]=(uint8_t)in_data[0],
                 .data[1]=(uint8_t)in_data[1],
