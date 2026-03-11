@@ -5,15 +5,68 @@ This project provides a Python module, `lps_ctrl.py`, which implements a unified
 1. **BLE Sender (`ESP32BTSender`)**: Controls an ESP32 via UART (USB Serial) from a PC, acting as a central Sender to broadcast Bluetooth Low Energy (BLE) command packets using a non-blocking scheduler for precise, synchronized actions across distributed receivers.
 2. **TCP Server (`Esp32TcpServer`)**: An asynchronous TCP server designed to push Over-The-Air (OTA) updates (control and frame data files) to individual receiver nodes over a local Wi-Fi network.
 
-## Installation
+## Installation & how to get USB port name if you are not Windows user
 
 It is recommended to create a virtual environment in the `lps-ctrl` directory (where `pyproject.toml` is located) and install the required packages.
+
+### 1. Windows
+
+```bash
+python3 -m venv venv
+# or try: python -m venv venv
+source venv/bin/activate
+# or try: .\venv\Scripts\Activate.ps1
+# or try: .\venv\Scripts\activate.bat
+python.exe -m pip install --upgrade pip
+pip install -e .
+python .\examples\lps_ctrl_ex.py
+```
+
+If you still fail to install/activate venv:
+```bash
+pip install -e .
+python .\examples\lps_ctrl_ex.py
+```
+
+### 2. MAC
+
+Get USB port:
+```bash
+ls /dev/cu.*
+```
+And the process is the same as Windows.
+
+### 3. WSL
+
+In windows terminal:
+```bash
+winget install --interactive --exact dorssel.usbipd-win
+usbipd list # the 'x-x' in the list: <busid>
+sudo usbipd bind --busid <busid>
+usbipd attach --wsl --busid <busid>
+```
+In wsl:
+```bash
+sudo apt install usbutils
+lsusb
+ls /dev/ttyUSB*
+```
+And you will get use port name. (Remember to fill in this name into lps_ctrl_ex.py)
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -e .
+sudo chmod 666 /dev/ttyUSB0 # your usb name (ls /dev/ttyUSB*)
+python3 examples/lps_ctrl_ex.py
 ```
+
+#### ⚠️ Re-plugging Workflow for WSL
+If you unplug and replug the ESP32, you **do not** need to run all commands again, but you **MUST** repeat the attach and permission steps:
+
+1. In Windows Terminal: `usbipd attach --wsl --busid <busid>`
+2. In WSL: `sudo chmod 666 /dev/ttyUSB0`
+3. Then you can run the python script again.
 
 ## Part 1: BLE Broadcasting (`ESP32BTSender`)
 
@@ -241,6 +294,7 @@ from lps_ctrl import Esp32TcpServer
 async def main():
     NUM_PLAYERS = 32
     BASE_DIR = r"D:\light_dance\ESP32_Advertiser\lps-ctrl\src\lps_ctrl\test_data"
+    # you should type your own dir
     
     all_control_paths = []
     all_frame_paths = []
