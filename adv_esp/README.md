@@ -8,7 +8,7 @@ This section explains the lifecycle of a command from the moment it leaves the P
 
 ### 1. Data Ingestion (UART Layer)
 
-* **PC Side**: Sends a CSV formatted string ending with `\n` (e.g., `1,5000000,0,FFFF,0,0,0\n`).
+* **PC Side**: Sends a CSV formatted string ending with `\n` (e.g., `1,5000,0,FFFF,0,0,0\n`).
 * **ESP32 ISR**: The `uart_event_task` receives the data via interrupt and passes it to `process_byte`.
 * **Buffering**: Characters are stored in `packet_buf` until a newline `\n` is detected.
 
@@ -82,15 +82,15 @@ cmd_in,delay_us,prep_led_us,target_mask,in_data[0],in_data[1],in_data[2]
 
 | Command | Hex Code | Description | Data Parameter Usage |
 | --- | --- | --- | --- |
-| **PLAY** | `0x01` | Start timeline/playback. | `[0, 0, 0]` |
-| **PAUSE** | `0x02` | Pause playback. | `[0, 0, 0]` |
-| **STOP** | `0x03` | Stop and reset position. | `[0, 0, 0]` |
-| **RELEASE** | `0x04` | Release memory/Unload. | `[0, 0, 0]` |
+| **PLAY** | `0x01` | Start timeline/playback. | None |
+| **PAUSE** | `0x02` | Pause playback. | None |
+| **STOP** | `0x03` | Stop and reset position. | None |
+| **RELEASE** | `0x04` | Release memory/Unload. | None |
 | **TEST** | `0x05` | Test Mode / LED Color. | `[R, G, B]` (0-255) or `[0,0,0]` for default pattern. |
-| **CANCEL** | `0x06` | Cancel a pending command. | `[cmd_id, 0, 0]` (Use the ID returned by send_burst) |
-| **CHECK** | `0x07` | Trigger Broadcast+Scan | `[0, 0, 0]` |
-| **UPLOAD** | `0x08` | Enter System Upload Mode. | `[0, 0, 0]`|
-| **RESET** | `0x09` | System Reboot. | `[0, 0, 0]` |
+| **CANCEL** | `0x06` | Cancel a pending command. | `[cmd_id]` (Use the ID returned by send_burst) |
+| **CHECK** | `0x07` | Trigger Broadcast+Scan | None |
+| **UPLOAD** | `0x08` | Enter System Upload Mode. | None |
+| **RESET** | `0x09` | System Reboot. | None |
 
 ### 2. Response Format (ESP32 -> PC)
 
@@ -105,14 +105,34 @@ The packet is constructed in `hci_cmd_send_ble_set_adv_data`. It uses Manufactur
 
 | Offset | Length | Value | Description |
 | --- | --- | --- | --- |
-| **0** | 3 | `0xFF, 0xFF, 0xFF` | Manufacturer ID / Padding |
-| **3** | 1 | `cmd_type` | Command Type |
-| **4** | 8 | `target_mask` | 64-bit Target Mask |
-| **12** | 4 | `delay_us` | **Dynamic** Remaining Time (Big Endian) |
-| **16** | 4 | `prep_led_us` | Preparation Time (Big Endian) |
-| **20** | 3 | `data[3]` | Extra Data (e.g., RGB) |
+| **0** | 3 | `0xFF, 0xFF, 0xFF` | Manufacturer ID |
+| **3** | 2 | `0x4C, 0x44` | unique code (LD) |
+| **5** | 1 | `cmd_type` | Command Type |
+| **6** | 8 | `target_mask` | 64-bit Target Mask |
+| **14** | 4 | `delay_us` | **Dynamic** Remaining Time (Big Endian) |
 
-**Total Length**: 23 Bytes of Manufacturer Data.
+The remaining bytes: 
+* `PLAY`
+
+| Offset | Length | Value | Description |
+| --- | --- | --- | --- |
+| **18** | 4 | `prep_led_us` | Preparation Time (Big Endian) |
+
+* `TEST`
+
+| Offset | Length | Value | Description |
+| --- | --- | --- | --- |
+| **18** | 3 | `data[3]` | Extra Data (e.g., RGB) |
+| **21** | 1 | `0` | padding |
+
+* `CANCEL`
+
+| Offset | Length | Value | Description |
+| --- | --- | --- | --- |
+| **18** | 1 | `cmd_id` | the cmd id that you want to cancel |
+| **19** | 3 | `0` | padding |
+
+**Total Length**: 22 Bytes of Manufacturer Data.
 
 ## Operating Principles
 

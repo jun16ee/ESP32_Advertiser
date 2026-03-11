@@ -152,21 +152,21 @@ send_burst(cmd_input, delay_sec, prep_led_sec, target_ids, data)
 | **cmd_input** | `str` | Command type (see Mapping Table below). |
 | **delay_sec** | `float` | Time in seconds before the command executes. **Must be > 1.0s**. |
 | **prep_led_sec** | `float` | Duration for the "Preparation LED" effect. **Must be > 1.0s**. |
-| **target_ids** | `list[int]` | List of Target IDs (e.g., `[1, 2]`). Use `[0]` for **Broadcast All**. |
+| **target_ids** | `list[int]` | List of Target IDs (e.g., `[1, 2]`). Use `[]` for **Broadcast All**. Use `[0]` for **Broadcast to error or unmounting ESP32**. |
 | **data** | `list[int]` | list of 3 integers `[d0, d1, d2]` for extra parameters. |
 
 **Command Mapping Table**
 
 | Command | Hex Code | Description | Data Parameter Usage |
 | --- | --- | --- | --- |
-| **PLAY** | `0x01` | Start timeline/playback. | `[0, 0, 0]` |
-| **PAUSE** | `0x02` | Pause playback. | `[0, 0, 0]` |
-| **STOP** | `0x03` | Stop and reset position. | `[0, 0, 0]` |
-| **RELEASE** | `0x04` | Release memory/Unload. | `[0, 0, 0]` |
+| **PLAY** | `0x01` | Start timeline/playback. | None |
+| **PAUSE** | `0x02` | Pause playback. | None |
+| **STOP** | `0x03` | Stop and reset position. | None |
+| **RELEASE** | `0x04` | Release memory/Unload. | None |
 | **TEST** | `0x05` | Test Mode / LED Color. | `[R, G, B]` (0-255) or `[0,0,0]` for default pattern. |
-| **CANCEL** | `0x06` | Cancel a pending command. | `[cmd_id, 0, 0]` (Use the ID returned by send_burst). |
-| **UPLOAD** | `0x08` | Enter System Upload Mode (Trigger TCP client). | `[0, 0, 0]` |
-| **RESET** | `0x09` | System Reboot. | `[0, 0, 0]` |
+| **CANCEL** | `0x06` | Cancel a pending command. | `[cmd_id]` (Use the ID returned by send_burst). |
+| **UPLOAD** | `0x08` | Enter System Upload Mode (Trigger TCP client). | None |
+| **RESET** | `0x09` | System Reboot. | None |
 * `CHECK`: using `trigger_check`
 
 #### Method: `trigger_check` & `get_latest_report`
@@ -193,6 +193,7 @@ report = sender.get_latest_report()
                 "cmd_type": 1,
                 "target_delay": 9365664,
                 "state": "TEST"
+                "timestamp": 1773239516.9176354
             }
         ]
     }
