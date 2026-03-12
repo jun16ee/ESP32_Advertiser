@@ -132,6 +132,12 @@ The remaining bytes:
 | **18** | 1 | `cmd_id` | the cmd id that you want to cancel |
 | **19** | 3 | `0` | padding |
 
+* Other command
+
+| Offset | Length | Value | Description |
+| --- | --- | --- | --- |
+| **18** | 4 | `0` | padding |
+
 **Total Length**: 22 Bytes of Manufacturer Data.
 
 ## Operating Principles
