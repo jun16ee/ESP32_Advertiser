@@ -190,7 +190,7 @@ report = sender.get_latest_report()
             {
                 "target_id": 1,
                 "cmd_id": 0,
-                "cmd_type": 1,
+                "cmd_type": "PLAY",
                 "target_delay": 9365664,
                 "state": "TEST"
                 "timestamp": 1773239516.9176354

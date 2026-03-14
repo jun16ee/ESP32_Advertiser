@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 class ESP32BTSender:
     # Maps user-friendly command strings to internal hexadecimal IDs
     CMD_MAP = { "PLAY": 0x01, "PAUSE": 0x02, "STOP": 0x03, "RELEASE": 0x04, "TEST": 0x05, "CANCEL": 0x06, "CHECK": 0x07, "UPLOAD": 0x08, "RESET": 0x09}
+    CMD_MAP_INV = { 0x01: "PLAY", 0x02: "PAUSE", 0x03: "STOP", 0x04: "RELEASE", 0x05: "TEST", 0x06: "CANCEL", 0x07: "CHECK", 0x08: "UPLOAD", 0x09: "RESET"}
     # Maps internal state integers to readable strings for reporting
     STATE_MAP = { 0: "UNLOADED", 1: "READY", 2: "PLAYING", 3: "PAUSE", 4: "TEST" }
 
@@ -92,24 +93,27 @@ class ESP32BTSender:
             parts = line.replace("FOUND:", "").split(',')
             if len(parts) >= 5:
                 state = self.STATE_MAP.get(int(parts[4]), "UNKNOWN")
+                cmd_type = self.CMD_MAP_INV.get(int(parts[2]), "UNKNOWN")
+                current_time = time.time()
                 packet = {
                     "target_id": int(parts[0]),
                     "cmd_id": int(parts[1]),
-                    "cmd_type": int(parts[2]),
+                    "cmd_type": cmd_type,
                     "target_delay": int(parts[3]),
                     "state": state,
-                    "timestamp": time.time()
+                    "timestamp": current_time
                 }
-                # Prevent duplicate entries in the buffer
-                is_duplicate = False
-                for existing_packet in self.found_devices_buffer:
-                    if (existing_packet["target_id"] == packet["target_id"] and 
-                        abs(packet["timestamp"] - existing_packet["timestamp"]) < 0.01):
-                        is_duplicate = True
-                        break
-                
-                if not is_duplicate:
+                if not self.found_devices_buffer:
                     self.found_devices_buffer.append(packet)
+                else:
+                    first_ts = self.found_devices_buffer[0]["timestamp"]
+                    
+                    if current_time - first_ts > 1.0:
+                        self.found_devices_buffer = [packet]
+                    else:
+                        is_duplicate = any(p["target_id"] == int(parts[0]) for p in self.found_devices_buffer)
+                        if not is_duplicate:
+                            self.found_devices_buffer.append(packet)
         except Exception as e:
             logger.error(f"Parse error: {e}")
 
@@ -187,8 +191,15 @@ class ESP32BTSender:
     def get_latest_report(self):
         """Fetches the aggregated status report after a CHECK scan."""
         self._drain_serial() # Ensure all pending data is read
-        report_snapshot = list(self.found_devices_buffer)
-        self.found_devices_buffer = []
+        report_snapshot = []
+        for device in self.found_devices_buffer:
+            report_snapshot.append({
+                "target_id": device["target_id"],
+                "cmd_id": device["cmd_id"],
+                "cmd_type": device["cmd_type"],
+                "target_delay": device["target_delay"],
+                "state": device["state"]
+            })
         return {
             "from": "Host_PC",
             "topic": "check_report",
